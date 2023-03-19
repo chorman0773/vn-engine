@@ -54,10 +54,7 @@ pub struct Span {
 
 impl Span {
     pub fn new_simple(start: Pos, end: Pos) -> Self {
-        Self {
-            start,
-            end,
-        }
+        Self { start, end }
     }
 }
 
@@ -66,7 +63,6 @@ impl fmt::Debug for Span {
         write!(f, "({:?} - {:?})", self.start, self.end)
     }
 }
-
 
 pub trait Speekerator: Iterator<Item = char> + Sized {
     fn speekable(self, file_name: impl Into<Symbol>) -> Speekable<Self>;

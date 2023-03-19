@@ -1,9 +1,8 @@
-
 use core::fmt;
 
 use super::{
-    symbol::Symbol,
     span::{Pos, Span, Speekable, Speekerator},
+    symbol::Symbol,
 };
 
 use unicode_xid::UnicodeXID;
@@ -190,7 +189,6 @@ pub enum Error {
     UnexpectedEof(Pos),
     UnrecognizedChar(char, Pos),
 }
-
 
 pub type Result<T> = core::result::Result<T, Error>;
 

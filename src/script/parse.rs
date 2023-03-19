@@ -1,6 +1,5 @@
-
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum BinaryOp{
+pub enum BinaryOp {
     Add,
     Sub,
     Mul,
@@ -31,13 +30,10 @@ pub enum BinaryOp{
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum UnaryOp{
+pub enum UnaryOp {
     Neg,
     Not,
-    
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub enum Expr{
-
-}
+pub enum Expr {}

@@ -13,7 +13,7 @@ pub struct Symbol(NonZeroU64);
 
 impl Default for Symbol {
     fn default() -> Self {
-        "<unsaved symbol>".into()
+        Self::empty()
     }
 }
 
@@ -75,10 +75,16 @@ impl core::fmt::Debug for Symbol {
     }
 }
 
-static COUNTER: AtomicUsize = AtomicUsize::new(1);
+static COUNTER: AtomicUsize = AtomicUsize::new(2);
 
 lazy_static::lazy_static! {
-    static ref MAP: RwLock<(FxHashMap<&'static str, NonZeroU64>,FxHashMap<NonZeroU64,&'static str>)> = parking_lot::const_rwlock(Default::default());
+    static ref MAP: RwLock<(FxHashMap<&'static str, NonZeroU64>,FxHashMap<NonZeroU64,&'static str>)> = {
+        let mut map = (FxHashMap::default(),FxHashMap::default());
+        let val = unsafe{NonZeroU64::new_unchecked(1)};
+        map.0.insert("",val);
+        map.1.insert(val,"");
+        parking_lot::const_rwlock(map)
+    };
 }
 
 impl From<&'_ str> for Symbol {
@@ -94,6 +100,10 @@ impl From<String> for Symbol {
 }
 
 impl Symbol {
+    pub const fn empty() -> Self {
+        Self(unsafe { NonZeroU64::new_unchecked(1) })
+    }
+
     pub fn intern_by_val(st: String) -> Self {
         let rdgrd = MAP.read();
         if let Some(sym) = rdgrd.0.get(&*st).copied() {
