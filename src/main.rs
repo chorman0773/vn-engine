@@ -10,6 +10,7 @@ use wgpu::{
 };
 use winit::{event_loop::EventLoop, window::Window};
 
+mod framebuf;
 mod script;
 
 fn main() {
@@ -138,18 +139,18 @@ fn main() {
     };
 
     let config = SurfaceConfiguration {
-        usage: Surface,
-        format: (),
-        width: (),
-        height: (),
-        present_mode: (),
-        alpha_mode: (),
-        view_formats: (),
+        usage: TextureUsages::all(),
+        format: TextureFormat::Bgra8Unorm,
+        width: 1920,
+        height: 1080,
+        present_mode: wgpu::PresentMode::Fifo,
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        view_formats: vec![TextureFormat::Bgra8Unorm],
     };
 
     surface.configure(&device, &config);
 
-    eloop.run(|event, targ, cf| match event {
+    eloop.run(move |event, targ, cf| match event {
         winit::event::Event::NewEvents(_) => {}
         winit::event::Event::WindowEvent { event, .. } => match event {
             winit::event::WindowEvent::Resized(size) => {
@@ -195,12 +196,10 @@ fn main() {
                 };
                 let mut enc = device.create_command_encoder(&desc);
 
-                let render_desc = RenderPassDescriptor {
-                    label: Some("draw background pass"),
-                    color_attachments: &[],
-                };
-
-                let mut render = enc.begin_render_pass(&render_desc);
+                // let render_desc = RenderPassDescriptor {
+                //     label: Some("draw background pass"),
+                //     color_attachments: &[],
+                // };
 
                 enc.finish()
             }));
