@@ -1,16 +1,22 @@
-use std::path::Path;
+use std::{
+    path::Path,
+    time::{Duration, Instant},
+};
 
+use event::GameEvent;
 use futures::future::FutureExt;
 
+use graphics::{Colour, GraphicsState, RenderState};
 use wgpu::{
     Backends, CommandEncoderDescriptor, DeviceDescriptor, Dx12Compiler, Extent3d, Features,
     ImageCopyTexture, Instance, InstanceDescriptor, Label, Limits, Origin3d, PowerPreference,
     RenderPassDescriptor, RequestAdapterOptions, SurfaceConfiguration, TextureDescriptor,
     TextureFormat, TextureUsages,
 };
-use winit::{event_loop::EventLoop, window::Window};
+use winit::{event_loop::EventLoop, event_loop::EventLoopBuilder, window::Window};
 
-mod framebuf;
+mod event;
+mod graphics;
 mod script;
 
 fn main() {
@@ -54,8 +60,8 @@ fn main() {
             "--wpgu-use-low-adaptor" => power_preference = PowerPreference::LowPower,
             "--use-dxc-compiler" => {
                 dx12_compiler = Some(Dx12Compiler::Dxc {
-                    dxil_path: std::env::var_os("VNENGINE_WGPU_DXCOMPILER").map(Into::into),
-                    dxc_path: std::env::var_os("VNENGINE_WGPU_DXIL").map(Into::into),
+                    dxil_path: std::env::var_os("VNENGINE_WGPU_DXIL").map(Into::into),
+                    dxc_path: std::env::var_os("VNENGINE_WGPU_DXCOMPILER").map(Into::into),
                 })
             }
             "--use-fxc-compiler" => {
@@ -81,7 +87,7 @@ fn main() {
 
     let instance = Instance::new(config);
 
-    let eloop = EventLoop::new();
+    let eloop = EventLoopBuilder::<GameEvent>::with_user_event().build();
 
     let window = Window::new(&eloop).unwrap_or_else(|e| {
         eprintln!("{}: Failed to open game window, {}.", prg_name, e);
@@ -123,21 +129,6 @@ fn main() {
 
     let mut cur_dimensions = window.inner_size();
 
-    let mut texture_desc = TextureDescriptor {
-        label: Some("background"),
-        size: Extent3d {
-            width: 1920,
-            height: 1080,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8Unorm,
-        usage: TextureUsages::all(),
-        view_formats: &[TextureFormat::Rgba8Unorm],
-    };
-
     let config = SurfaceConfiguration {
         usage: TextureUsages::all(),
         format: TextureFormat::Bgra8Unorm,
@@ -150,61 +141,75 @@ fn main() {
 
     surface.configure(&device, &config);
 
-    eloop.run(move |event, targ, cf| match event {
-        winit::event::Event::NewEvents(_) => {}
-        winit::event::Event::WindowEvent { event, .. } => match event {
-            winit::event::WindowEvent::Resized(size) => {
-                cur_dimensions = size;
-            }
-            winit::event::WindowEvent::Moved(_) => {}
-            winit::event::WindowEvent::CloseRequested => {
-                std::process::exit(0);
-            }
-            winit::event::WindowEvent::Destroyed => {}
-            winit::event::WindowEvent::DroppedFile(_) => {}
-            winit::event::WindowEvent::HoveredFile(_) => {}
-            winit::event::WindowEvent::HoveredFileCancelled => {}
-            winit::event::WindowEvent::ReceivedCharacter(_) => {}
-            winit::event::WindowEvent::Focused(_) => {}
-            winit::event::WindowEvent::KeyboardInput { .. } => {}
-            winit::event::WindowEvent::ModifiersChanged(_) => {}
-            winit::event::WindowEvent::Ime(_) => {}
-            winit::event::WindowEvent::CursorMoved { .. } => {}
-            winit::event::WindowEvent::CursorEntered { .. } => {}
-            winit::event::WindowEvent::CursorLeft { .. } => {}
-            winit::event::WindowEvent::MouseWheel { .. } => {}
-            winit::event::WindowEvent::MouseInput { .. } => {}
-            winit::event::WindowEvent::TouchpadMagnify { .. } => {}
-            winit::event::WindowEvent::SmartMagnify { .. } => {}
-            winit::event::WindowEvent::TouchpadRotate { .. } => {}
-            winit::event::WindowEvent::TouchpadPressure { .. } => {}
-            winit::event::WindowEvent::AxisMotion { .. } => {}
-            winit::event::WindowEvent::Touch(_) => {}
-            winit::event::WindowEvent::ScaleFactorChanged { .. } => {}
-            winit::event::WindowEvent::ThemeChanged(_) => {}
-            winit::event::WindowEvent::Occluded(_) => {}
-        },
-        winit::event::Event::DeviceEvent { .. } => {}
-        winit::event::Event::UserEvent(_) => {}
-        winit::event::Event::Suspended => {}
-        winit::event::Event::Resumed => {}
-        winit::event::Event::MainEventsCleared => {}
-        winit::event::Event::RedrawRequested(_) => {
-            queue.submit(core::iter::once_with(|| {
-                let desc = CommandEncoderDescriptor {
-                    label: Some("draw background"),
-                };
-                let mut enc = device.create_command_encoder(&desc);
+    let mut state = GraphicsState::new(device, surface, queue, cur_dimensions.into());
 
-                // let render_desc = RenderPassDescriptor {
-                //     label: Some("draw background pass"),
-                //     color_attachments: &[],
-                // };
+    let periodic_proxy = eloop.create_proxy();
 
-                enc.finish()
-            }));
+    let hdl = std::thread::spawn(move || loop {
+        let time = Instant::now();
+        std::thread::sleep(Duration::from_millis(50));
+        let dt = time.elapsed().as_secs_f32();
+        if periodic_proxy.send_event(GameEvent::Periodic(dt)).is_err() {
+            break;
         }
-        winit::event::Event::RedrawEventsCleared => {}
-        winit::event::Event::LoopDestroyed => std::process::exit(0),
+    });
+
+    window.set_title("VN Engine");
+
+    eloop.run(move |event, targ, cf| {
+        let state = &mut state;
+        match event {
+            winit::event::Event::NewEvents(_) => {}
+            winit::event::Event::WindowEvent { event, .. } => match event {
+                winit::event::WindowEvent::Resized(size) => {
+                    state.set_dimension(size.into());
+                }
+                winit::event::WindowEvent::Moved(_) => {}
+                winit::event::WindowEvent::CloseRequested => {
+                    std::process::exit(0);
+                }
+                winit::event::WindowEvent::Destroyed => {}
+                winit::event::WindowEvent::DroppedFile(_) => {}
+                winit::event::WindowEvent::HoveredFile(_) => {}
+                winit::event::WindowEvent::HoveredFileCancelled => {}
+                winit::event::WindowEvent::ReceivedCharacter(_) => {}
+                winit::event::WindowEvent::Focused(_) => {}
+                winit::event::WindowEvent::KeyboardInput { .. } => {}
+                winit::event::WindowEvent::ModifiersChanged(_) => {}
+                winit::event::WindowEvent::Ime(_) => {}
+                winit::event::WindowEvent::CursorMoved { .. } => {}
+                winit::event::WindowEvent::CursorEntered { .. } => {}
+                winit::event::WindowEvent::CursorLeft { .. } => {}
+                winit::event::WindowEvent::MouseWheel { .. } => {}
+                winit::event::WindowEvent::MouseInput { .. } => {}
+                winit::event::WindowEvent::TouchpadMagnify { .. } => {}
+                winit::event::WindowEvent::SmartMagnify { .. } => {}
+                winit::event::WindowEvent::TouchpadRotate { .. } => {}
+                winit::event::WindowEvent::TouchpadPressure { .. } => {}
+                winit::event::WindowEvent::AxisMotion { .. } => {}
+                winit::event::WindowEvent::Touch(_) => {}
+                winit::event::WindowEvent::ScaleFactorChanged { .. } => {}
+                winit::event::WindowEvent::ThemeChanged(_) => {}
+                winit::event::WindowEvent::Occluded(_) => {}
+            },
+            winit::event::Event::DeviceEvent { .. } => {}
+            winit::event::Event::UserEvent(ge) => match ge {
+                GameEvent::ScriptNotify(_, _) => {}
+                GameEvent::Periodic(f) => {
+                    window.request_redraw();
+                }
+            },
+            winit::event::Event::Suspended => {}
+            winit::event::Event::Resumed => {}
+            winit::event::Event::MainEventsCleared => {}
+            winit::event::Event::RedrawRequested(_) => state
+                .render(&|r: &mut RenderState| {
+                    r.draw_solid_color(Colour::HALFWHITE)?;
+                    Ok(())
+                })
+                .unwrap(),
+            winit::event::Event::RedrawEventsCleared => {}
+            winit::event::Event::LoopDestroyed => std::process::exit(0),
+        }
     })
 }
